@@ -1,0 +1,49 @@
+{
+  "_from": "git+https://github.com/antoniolarasarabia/googlemutant-mask.git",
+  "_id": "googlemutant-mask@1.0.0",
+  "_inBundle": false,
+  "_integrity": "",
+  "_location": "/googlemutant-mask",
+  "_phantomChildren": {},
+  "_requested": {
+    "type": "git",
+    "raw": "leaflet-vectorgrid-mask@git+https://github.com/antoniolarasarabia/googlemutant-mask.git",
+    "name": "googlemutant-mask",
+    "escapedName": "googlemutant-mask",
+    "rawSpec": "git+https://github.com/antoniolarasarabia/googlemutant-mask.git",
+    "saveSpec": "git+https://github.com/antoniolarasarabia/googlemutant-mask.git",
+    "fetchSpec": "https://github.com/antoniolarasarabia/googlemutant-mask.git",
+    "gitCommittish": null
+  },
+  "_requiredBy": [
+    "/"
+  ],
+  "_resolved": "git+https://github.com/antoniolarasarabia/googlemutant-mask.git#fa308b99ae9d792b5a855ff9ba8290d8017d559b",
+  "_spec": "leaflet-vectorgrid-mask@git+https://github.com/antoniolarasarabia/googlemutant-mask.git",
+  "_where": "/home/antonio/Projects/vandersat/FrontSat",
+  "author": {
+    "name": "Antonio"
+  },
+  "bugs": {
+    "url": "git+https://github.com/antoniolarasarabia/googlemutant-mask/issues"
+  },
+  "bundleDependencies": false,
+  "deprecated": false,
+  "description": "A Leaflet googlemutant with mask effect",
+  "homepage": "https://github.com/antoniolarasarabia/googlemutant-mask#readme",
+  "keywords": [
+    "leaflet"
+  ],
+  "license": "MIT",
+  "main": "googlemutant-mask.js",
+  "name": "googlemutant-mask",
+  "peerDependencies": {
+    "leaflet": "^1.0.0",
+    "leaflet.gridlayer.googlemutant": "0.8.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/antoniolarasarabia/googlemutant-mask.git"
+  },
+  "version": "1.0.0"
+}
