@@ -1,4 +1,8 @@
 import 'leaflet.gridlayer.googlemutant';
+import * as Util from "leaflet/src/core/Util";
+import * as DomUtil from "leaflet/src/dom/DomUtil";
+import {Bounds, Point} from "leaflet/src/geometry";
+import * as Browser from "leaflet/src/core/Browser";
 
 (function() {
 
@@ -33,7 +37,7 @@ import 'leaflet.gridlayer.googlemutant';
   ].join("");
 
   L.GridLayer.GoogleMutant.Mask = L.GridLayer.GoogleMutant.extend({
-    options: {
+     options: {
       maskUrl: defaultMaskUrl,
       maskSize: 512
     },
@@ -53,8 +57,7 @@ import 'leaflet.gridlayer.googlemutant';
         this._image.setAttribute("y", p.y);
       }
     },
-    _initContainer: function () {
-
+    _initContainer: function() {
       if (this._container) return;
       var rootGroup = this._map.getRenderer(this)._rootGroup;
       var defs = rootGroup.appendChild(L.SVG.create("defs"));
@@ -71,39 +74,281 @@ import 'leaflet.gridlayer.googlemutant';
       image.setAttribute("height", size.y);
       image.setAttributeNS("http://www.w3.org/1999/xlink", "xlink:href", this.options.maskUrl);
       container.setAttribute("mask", "url(#" + mask.getAttribute("id") + ")");
+      var text = container.appendChild(L.SVG.create("text"));
+      text.setAttribute("text", "hola k tal");
+      text.setAttribute("x", 380);
+      text.setAttribute("y", 350);
       this._container = container;
       this._image = image;
       this.setCenter(this._map.getSize().divideBy(2));
 
+    },
+      _update: function () {
+		// zoom level check needs to happen before super's implementation (tile addition/creation)
+		// otherwise tiles may be missed if maxNativeZoom is not yet correctly determined
+		if (this._mutant) {
+			var center = this._map.getCenter();
+			var _center = new google.maps.LatLng(center.lat, center.lng);
+
+			this._mutant.setCenter(_center);
+			var zoom = this._map.getZoom();
+			var fractionalLevel = zoom !== Math.round(zoom);
+			var mutantZoom = this._mutant.getZoom();
+
+			//ignore fractional zoom levels
+			if (!fractionalLevel && (zoom != mutantZoom)) {
+				this._mutant.setZoom(zoom);
+
+				if (this._mutantIsReady) this._checkZoomLevels();
+				//else zoom level check will be done later by 'idle' handler
+			}
+		}
+		this._updateTest();
 	},
-    _updateLevels: function() {
-      var zoom = this._tileZoom;
-      if (zoom === undefined)
-        return undefined;
 
-      for (var z in this._levels) {
-        if (!this._levels[z].el.firstChild && z !== zoom) {
-          L.DomUtil.remove(this._levels[z].el);
-          this._removeTilesAtZoom(z);
-          delete this._levels[z];
-        }
+    _updateTest: function (center) {
+		var map = this._map;
+		if (!map) { return; }
+		var zoom = this._clampZoom(map.getZoom());
+
+		if (center === undefined) { center = map.getCenter(); }
+		if (this._tileZoom === undefined) { return; }	// if out of minzoom/maxzoom
+
+		var pixelBounds = this._getTiledPixelBounds(center),
+		    tileRange = this._pxBoundsToTileRange(pixelBounds),
+		    tileCenter = tileRange.getCenter(),
+		    queue = [],
+		    margin = this.options.keepBuffer,
+		    noPruneRange = new Bounds(tileRange.getBottomLeft().subtract([margin, -margin]),
+		                              tileRange.getTopRight().add([margin, -margin]));
+
+		// Sanity check: panic if the tile range contains Infinity somewhere.
+		if (!(isFinite(tileRange.min.x) &&
+		      isFinite(tileRange.min.y) &&
+		      isFinite(tileRange.max.x) &&
+		      isFinite(tileRange.max.y))) { throw new Error('Attempted to load an infinite number of tiles'); }
+
+		for (var key in this._tiles) {
+			var c = this._tiles[key].coords;
+			if (c.z !== this._tileZoom || !noPruneRange.contains(new Point(c.x, c.y))) {
+				this._tiles[key].current = false;
+			}
+		}
+
+		// _update just loads more tiles. If the tile zoom level differs too much
+		// from the map's, let _setView reset levels and prune old tiles.
+		if (Math.abs(zoom - this._tileZoom) > 1) { this._setView(center, zoom); return; }
+
+		// create a queue of coordinates to load tiles from
+		for (var j = tileRange.min.y; j <= tileRange.max.y; j++) {
+			for (var i = tileRange.min.x; i <= tileRange.max.x; i++) {
+				var coords = new Point(i, j);
+				coords.z = this._tileZoom;
+
+				if (!this._isValidTile(coords)) { continue; }
+
+				var tile = this._tiles[this._tileCoordsToKey(coords)];
+				if (tile) {
+					tile.current = true;
+				} else {
+					queue.push(coords);
+				}
+			}
+		}
+
+		// sort tile queue to load tiles in order of their distance to center
+		queue.sort(function (a, b) {
+			return a.distanceTo(tileCenter) - b.distanceTo(tileCenter);
+		});
+
+		if (queue.length !== 0) {
+			// if it's the first batch of tiles to load
+			if (!this._loading) {
+				this._loading = true;
+				// @event loading: Event
+				// Fired when the grid layer starts loading tiles.
+				this.fire('loading');
+			}
+
+			// create DOM fragment to append tiles in one batch
+			this._fragment = document.createDocumentFragment();
+
+			for (i = 0; i < queue.length; i++) {
+				this._addTile(queue[i], this._fragment);
+			}
+
+			// this._level.el.appendChild(fragment);
+		}
+	},
+
+      _addTile: function (coords, container) {
+		var tilePos = this._getTilePos(coords),
+		    key = this._tileCoordsToKey(coords);
+
+
+		var tilePos = this._getTilePos(coords);
+        var tileSize = this.getTileSize();
+        var key = this._tileCoordsToKey(coords);
+        // var url = this.getTileUrl(this._wrapCoords(coords));
+
+
+		// const test = document.getElementsByClassName("leaflet-tile-container");
+      // console.log('test vale');
+      // console.log(test[0].childNodes.length);
+      //
+      // const other_test = test[0].cloneNode(true);
+
+      // for (var i = 0; i < other_test.childNodes.length; i++) {
+      //     console.log('esta prueba vale');
+      //     console.log(other_test.childNodes[i].children[0].src);
+          // var tile_prueba = document.createElement('img');
+          // tile_prueba.src = other_test.childNodes[i].children[0].src;
+          // tile_prueba.setAttribute("x", 380);
+          // tile_prueba.setAttribute("y", 350);
+          // tile_prueba.setAttribute("width", 256);
+          // tile_prueba.setAttribute("height", 256);
+          // tile_prueba.setAttribute("href", other_test.childNodes[i].children[0].src);
+          //   var otra_pruee = document.createElement("text");
+          //   otra_pruee.setAttribute("x", 380);
+          //   otra_pruee.setAttribute("y", 350);
+          //   otra_pruee.setAttribute("text-content", 'HOLAAA');
+          //   otra_pruee.setAttribute("z-index", '800');
+          // var test_tile = container.appendChild(otra_pruee);
+
+
+      // }
+
+		var tile = this.createTile(this._wrapCoords(coords), Util.bind(this._tileReady, this, coords));
+
+		this._initTile(tile);
+
+		// if createTile is defined with a second argument ("done" callback),
+		// we know that tile is async and will be ready later; otherwise
+		if (this.createTile.length < 2) {
+			// mark tile as ready, but delay one frame for opacity animation to happen
+			Util.requestAnimFrame(Util.bind(this._tileReady, this, coords, null, tile));
+		}
+
+		DomUtil.setPosition(tile, tilePos);
+
+		// save tile in cache
+		this._tiles[key] = {
+			el: tile,
+			coords: coords,
+			current: true
+		};
+
+        console.log('tilesize vale');
+        console.log(tileSize);
+		// var text = container.appendChild(L.SVG.create("image"));
+        // text.setAttribute("href", "https://placekitten.com/256/256?image=2");
+        // text.setAttribute("x", tilePos.x);
+        // text.setAttribute("y", tilePos.y);
+        // text.setAttribute("width", tileSize.x);
+        // text.setAttribute("height", tileSize.y);
+
+        console.log('SE LLAMA ADD TILE');
+        // setTimeout(function() {
+        //     var test_tile = container.appendChild(tile.children[0]);
+        //     test_tile.setAttribute("width", 256);
+        //     test_tile.setAttribute("height", 256);
+        //     test_tile.setAttribute("x", tilePos.x);
+        //     test_tile.setAttribute("y", tilePos.y);
+        //      }, 3000);
+
+
+		// this._container.appendChild(tile);
+		// @event tileloadstart: TileEvent
+		// Fired when a tile is requested and starts loading.
+		// this.fire('tileloadstart', {
+		// 	tile: tile,
+		// 	coords: coords
+		// });
+	},
+
+      _tileReady: function (coords, err, tile) {
+		if (!this._map) { return; }
+
+		if (err) {
+			// @event tileerror: TileErrorEvent
+			// Fired when there is an error loading a tile.
+			this.fire('tileerror', {
+				error: err,
+				tile: tile,
+				coords: coords
+			});
+		}
+
+		var key = this._tileCoordsToKey(coords);
+
+		tile = this._tiles[key];
+		if (!tile) { return; }
+
+		console.log('SE LLAMA TILE READY');
+
+		tile.loaded = +new Date();
+		if (this._map._fadeAnimated) {
+			DomUtil.setOpacity(tile.el, 0);
+			Util.cancelAnimFrame(this._fadeFrame);
+			this._fadeFrame = Util.requestAnimFrame(this._updateOpacity, this);
+		} else {
+			tile.active = true;
+			this._pruneTiles();
+		}
+
+		if (!err) {
+			DomUtil.addClass(tile.el, 'leaflet-tile-loaded');
+
+			// @event tileload: TileEvent
+			// Fired when a tile loads.
+			this.fire('tileload', {
+				tile: tile.el,
+				coords: coords
+			});
+		}
+
+		if (this._noTilesToLoad()) {
+			this._loading = false;
+			// @event load: Event
+			// Fired when the grid layer loaded all visible tiles.
+			this.fire('load');
+
+			this._test();
+
+			if (Browser.ielt9 || !this._map._fadeAnimated) {
+				Util.requestAnimFrame(this._pruneTiles, this);
+			} else {
+				// Wait a bit more than 0.2 secs (the duration of the tile fade-in)
+				// to trigger a pruning.
+				setTimeout(Util.bind(this._pruneTiles, this), 250);
+			}
+		}
+	},
+
+      _test() {
+         console.log('SE LLAMA A TEST!!!!');
+         console.log('this_tiles vale');
+         console.log(this._tiles.length);
+
+         for (var key in this._tiles) {
+             var coords = this._tiles[key].coords
+             var tilePos = this._getTilePos(coords);
+            var tileSize = this.getTileSize();
+            var key = this._tileCoordsToKey(coords);
+             var text = this._fragment.appendChild(L.SVG.create("image"));
+            text.setAttribute("href", this._tiles[key].el.children[0].src);
+            text.setAttribute("x", tilePos.x);
+            text.setAttribute("y", tilePos.y);
+            text.setAttribute("width", tileSize.x);
+            text.setAttribute("height", tileSize.y);
+             console.log(this._tiles[key].el.children[0].src);
+         }
+
+         console.log('SE LLAMA UPDATE TEST');
+
+            this._container.appendChild(this._fragment);
       }
 
-      var level = this._levels[zoom];
-      if (!level) {
-        var map = this._map;
-        level = {
-          el: this._container.appendChild(L.SVG.create("g")),
-          origin: map.project(map.unproject(map.getPixelOrigin()), zoom).round(),
-          zoom: zoom
-        };
-        this._setZoomTransform(level, map.getCenter(), map.getZoom());
-        L.Util.falseFn(level.el.offsetWidth);
-        this._levels[zoom] = level;
-      }
-      this._level = level;
-      return level;
-    }
   });
 
   L.GridLayer.GoogleMutant.mask = function(data, options) {
