@@ -205,10 +205,10 @@ import * as Browser from "leaflet/src/core/Browser";
                 }
 
                 // create DOM fragment to append tiles in one batch
-                this._fragment = document.createDocumentFragment();
+                var tilesFragment = document.createDocumentFragment();
 
                 for (i = 0; i < queue.length; i++) {
-                    this._addTile(queue[i], this._fragment);
+                    this._addTile(queue[i], tilesFragment);
                 }
             }
         },
@@ -262,8 +262,6 @@ import * as Browser from "leaflet/src/core/Browser";
                 // Fired when the grid layer loaded all visible tiles.
                 this.fire('load');
 
-                this._addTilesToContainer();
-
                 if (Browser.ielt9 || !this._map._fadeAnimated) {
                     Util.requestAnimFrame(this._pruneTiles, this);
                 } else {
@@ -272,24 +270,53 @@ import * as Browser from "leaflet/src/core/Browser";
                     setTimeout(Util.bind(this._pruneTiles, this), 250);
                 }
             }
+
+            this._addTilesToContainer();
+        },
+
+        onRemove: function (map) {
+            L.GridLayer.prototype.onRemove.call(this, map);
+            this._observer.disconnect();
+            map._container.removeChild(this._mutantContainer);
+
+            google.maps.event.clearListeners(map, 'idle');
+            if (this._mutant) {
+                google.maps.event.clearListeners(this._mutant, 'idle');
+            }
+            map.off('viewreset', this._reset, this);
+            map.off('move', this._update, this);
+            map.off('moveend', this._update, this);
+            map.off('zoomend', this._handleZoomAnim, this);
+            map.off('resize', this._resize, this);
+
+            if (map._controlCorners) {
+                map._controlCorners.bottomright.style.marginBottom = '0em';
+                map._controlCorners.bottomleft.style.marginBottom = '0em';
+            }
         },
 
         _addTilesToContainer() {
+            var fragment = document.createDocumentFragment();
             for (var key in this._tiles) {
                 var coords = this._tiles[key].coords
                 var tilePos = this._getTilePos(coords);
                 var tileSize = this.getTileSize();
                 var key = this._tileCoordsToKey(coords);
                 for (var i = 0; i < this._tiles[key].el.children.length; i++) {
-                    var image_tile = this._fragment.appendChild(L.SVG.create("image"));
+                    var image_tile = fragment.appendChild(L.SVG.create("image"));
                     image_tile.setAttribute("href", this._tiles[key].el.children[i].src);
                     image_tile.setAttribute("x", tilePos.x);
                     image_tile.setAttribute("y", tilePos.y);
                     image_tile.setAttribute("width", tileSize.x);
                     image_tile.setAttribute("height", tileSize.y);
+                    this._tiles[key] = {
+                        el: image_tile,
+                        coords: coords,
+                        current: true
+                    };
                 }
             }
-            this._container.appendChild(this._fragment);
+            this._level.el.appendChild(fragment);
         }
 
     });
