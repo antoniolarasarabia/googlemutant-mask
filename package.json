@@ -39,7 +39,7 @@
   "name": "googlemutant-mask",
   "peerDependencies": {
     "leaflet": "^1.0.0",
-    "leaflet.gridlayer.googlemutant": "^0.8.0"
+    "leaflet.gridlayer.googlemutant": "^0.10.2"
   },
   "repository": {
     "type": "git",
